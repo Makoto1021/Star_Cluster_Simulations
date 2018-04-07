@@ -1,0 +1,184 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+This is an [R Markdown](http://rmarkdown.rstudio.com) Notebook. When you execute code within the notebook, the results appear beneath the code. 
+
+Try executing this chunk by clicking the *Run* button within the chunk or by placing your cursor inside it and pressing *Cmd+Shift+Enter*. 
+
+```{r}
+# libraries
+library(plotly)
+library(dplyr)
+```
+
+
+```{r}
+# load data
+c_0000 <- read.csv("Data/c_0000.csv")
+c_0100 <- read.csv("Data/c_0100.csv")
+c_0200 <- read.csv("Data/c_0200.csv")
+
+for(i in 0:2) {
+  infile <- paste0("Data/c_0", i, "00.csv")
+  a <- read.csv(infile)
+  b <- assign(paste0("c_0", i, "00"), a)
+  pl <- plot_ly(b, x = ~x, y = ~y, z = ~z, color = ~id) %>%
+    add_markers() %>%
+    layout(scene = list(xaxis = list(title = 'x'),
+                      yaxis = list(title = 'y'),
+                      zaxis = list(title = 'z')))
+  assign(paste0("pl", i), pl)
+}
+
+
+ggplotly()
+```
+
+
+```{r}
+# find the cluster center
+find_cm <- function(snap)
+    {
+    x_cm <- mean(snap$x)
+    y_cm <- mean(snap$y)
+    z_cm <- mean(snap$z)
+    cm <- c(x_cm, y_cm, z_cm)
+    return(cm)
+    }
+
+find_cm(c_0000)
+```
+
+```{r}
+# visualize data at c_0000
+p.0000 <- plot_ly(c_0000, x = ~x, y = ~y, z = ~z,
+                  color = ~id,
+                  colors = 'YlOrBr',
+                  size = 5, sizes = c(1, 1),
+                  type = 'scatter3d',
+                  showscale = FALSE,
+                  showlegend = FALSE) %>%
+  add_markers() %>%
+  layout(scene = list(xaxis = list(title = 'x', color = 'white'),
+                      yaxis = list(title = 'y', color = 'white'),
+                      zaxis = list(title = 'z', color = 'white')),
+         paper_bgcolor='#222',
+         showlegend = FALSE,
+         legend=list(color = "white")
+  )
+p.0000
+```
+
+```{r}
+library(shiny)
+for(i in 0:18) {
+  
+  pad_int<-function(n, scale){
+  out_string<-paste(10*scale + n, "00", sep='')
+  out_string<-substr(out_string, 2, nchar(out_string))
+  return(out_string)
+  }
+  
+  infile <- paste0("Data/c_", pad_int(i,10), ".csv")
+  a <- read.csv(infile)
+  a$time <- rep(i, nrow(a)) # for combining afterwords
+  b <- assign(paste0("c_", pad_int(i,10)), a)
+  
+  # finding cluster centroids
+  find_cm <- function(snap)
+  {
+    x_cm <- mean(snap$x)
+    y_cm <- mean(snap$y)
+    z_cm <- mean(snap$z)
+    cm <- c(x_cm, y_cm, z_cm)
+    return(cm)
+  }
+  
+  # plotting
+  pl <- plot_ly(b, x = ~x, y = ~y, z = ~z, color = ~id, size = 5, sizes = c(1, 1)) %>%
+    add_markers() %>%
+    layout(scene = list(xaxis = list(title = 'x'),
+                        yaxis = list(title = 'y'),
+                        zaxis = list(title = 'z'))) %>%
+    add_trace(x = find_cm(b)[1], 
+              y = find_cm(b)[2], 
+              z = find_cm(b)[3], 
+              color = "#ff6666", 
+              name = "Cluster Centroid", 
+              mode = 'markers', 
+              marker = list(size = 20))
+  assign(paste0("pl", i), pl)
+  
+  # for text output of centroids
+  cent <- find_cm(b)
+  names(cent) <- paste("centroid", i)
+}
+```
+
+
+```{r}
+find_reff <- function(snap)
+    {
+    cm <- find_cm(snap)
+    x <- snap$x - cm[1]
+    y <- snap$y - cm[2]
+    z <- snap$z - cm[3]
+    r2 <- x*x + y*y + z*z
+    return(sqrt(median(r2)))
+    }
+
+
+find_reff(c_0000)
+find_reff(c_1800)
+
+moved <- find_cm(c_1800) - find_cm(c_0000)
+
+moved
+```
+
+```{r}
+# see the trace of the stars going out of the cluster
+id.esc <- c_0000$id[!(c_0000$id %in% c_1800$id)]
+id.esc
+
+c_global <- rbind(c_0000, c_0100, c_0200, c_0300, c_0400, c_0500, c_0600, c_0700, c_0800, c_0900, c_1000, c_1100, c_1200, c_1300, c_1400, c_1500, c_1600, c_1600, c_1700, c_1800)
+
+c_esc <- c_global %>%
+  filter(id %in% id.esc) %>%
+  arrange(id)
+
+c <- c_esc %>% 
+      filter(id == 1797)
+subset(c, time==0)[1, 2]
+```
+
+
+```{r}
+p.esc <- plot_ly(c_esc, x = ~x, y = ~y, z = ~z,
+                 group = id,
+                 color = ~id,
+                 colorscale='YlOrRd',
+                 size = 5, sizes = c(3, 3),
+                 mode = "lines+markers",
+                 type = 'scatter3d'
+                 # line = list(width = 4, color = ~c, colorscale = list(c(0,'#BA52ED'), c(1,'#FCB040')))
+                 ) %>%
+  # add_lines(x= ~x, y = ~y, z = ~z,
+  #           name = "Stars escaping from the cluster", 
+  #           line = list(shape = "linear"), 
+  #           text = ~paste('ID: ', id),
+  #           text = ~paste('time: ', time)) %>%
+  add_markers(text = ~paste('ID: ', id),
+              text = ~paste('time: ', time)) %>%
+  layout(scene = list(xaxis = list(title = 'x', color = 'white'),
+                      yaxis = list(title = 'y', color = 'white'),
+                      zaxis = list(title = 'z', color = 'white')),
+         paper_bgcolor='#222',
+         showlegend = FALSE,
+         legend=list(color = "white")
+  )
+p.esc
+```
+
